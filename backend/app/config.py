@@ -15,13 +15,12 @@ class Settings(BaseSettings):
     app_name: str = "PayTrack"
     debug: bool = True
 
-    # Ollama LLM - Primary (Remote)
-    ollama_base_url: str = "http://192.168.1.9:11434"
-    ollama_model: str = "qwen3:30b"
-    ollama_timeout: int = 180  # Longer for larger model
-
-    # No local fallback - remote only
-    ollama_fallback_enabled: bool = False
+    # Anthropic Claude API
+    anthropic_api_key: str = ""  # Required
+    claude_model: str = "claude-sonnet-4-20250514"
+    claude_max_tokens: int = 4096
+    claude_temperature: float = 0.1
+    claude_timeout: int = 120
 
     class Config:
         env_file = ".env"

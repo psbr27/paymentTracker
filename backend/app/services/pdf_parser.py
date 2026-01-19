@@ -10,7 +10,7 @@ import json
 import pdfplumber
 
 from app.schemas.import_statement import ParsedTransaction
-from app.services.ollama_service import call_ollama, extract_json_from_response, OllamaError
+from app.services.claude_service import call_claude, extract_json_from_response, ClaudeError
 
 
 class PDFParseError(Exception):
@@ -358,7 +358,7 @@ async def extract_transactions_with_llm(text: str) -> Tuple[List[ParsedTransacti
     prompt = PDF_TEXT_EXTRACTION_PROMPT.format(statement_text=text)
 
     try:
-        response = await call_ollama(prompt)
+        response = await call_claude(prompt)
         raw_results = extract_json_from_response(response)
 
         transactions = []
@@ -390,7 +390,7 @@ async def extract_transactions_with_llm(text: str) -> Tuple[List[ParsedTransacti
 
         return transactions, warnings
 
-    except OllamaError as e:
+    except ClaudeError as e:
         return [], [f"LLM extraction failed: {str(e)}"]
 
 

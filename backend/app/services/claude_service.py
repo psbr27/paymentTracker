@@ -2,18 +2,20 @@ import json
 import re
 from typing import List, Dict, Any, Optional
 from decimal import Decimal
-import httpx
+
+from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import HumanMessage
 
 from app.config import get_settings
 
 
-class OllamaError(Exception):
-    """Exception raised when Ollama API call fails"""
+class ClaudeError(Exception):
+    """Exception raised when Claude API call fails"""
     pass
 
 
-class OllamaUnavailableError(OllamaError):
-    """Exception raised when Ollama service is not reachable"""
+class ClaudeUnavailableError(ClaudeError):
+    """Exception raised when Claude service is not reachable"""
     pass
 
 
@@ -84,45 +86,36 @@ BANK STATEMENT:
 Return JSON array only:"""
 
 
-async def call_ollama(prompt: str, model: Optional[str] = None,
-                      use_json_format: bool = False) -> str:
-    """Call Ollama API and return the response text"""
+async def call_claude(prompt: str, use_json_format: bool = False) -> str:
+    """Call Claude API via LangChain and return the response text"""
     settings = get_settings()
-    ollama_url = settings.ollama_base_url
-    ollama_model = model or settings.ollama_model
-    timeout = settings.ollama_timeout
 
-    request_body = {
-        "model": ollama_model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {
-            "temperature": 0.1,
-            "num_predict": 4000
-        }
-    }
-
-    if use_json_format:
-        request_body["format"] = "json"
+    if not settings.anthropic_api_key:
+        raise ClaudeUnavailableError("ANTHROPIC_API_KEY is not configured")
 
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{ollama_url}/api/generate",
-                json=request_body,
-                timeout=timeout
-            )
-            response.raise_for_status()
-            result = response.json()
-            return result.get("response", "")
-    except httpx.ConnectError:
-        raise OllamaUnavailableError("Cannot connect to Ollama. Is it running?")
-    except httpx.TimeoutException:
-        raise OllamaUnavailableError("Ollama request timed out")
-    except httpx.HTTPStatusError as e:
-        raise OllamaError(f"Ollama API error: {e.response.status_code}")
+        llm = ChatAnthropic(
+            model=settings.claude_model,
+            api_key=settings.anthropic_api_key,
+            max_tokens=settings.claude_max_tokens,
+            temperature=settings.claude_temperature,
+            timeout=settings.claude_timeout,
+        )
+
+        messages = [HumanMessage(content=prompt)]
+        response = await llm.ainvoke(messages)
+
+        return response.content
     except Exception as e:
-        raise OllamaError(f"Ollama error: {str(e)}")
+        error_str = str(e).lower()
+        if 'api key' in error_str or 'authentication' in error_str or 'unauthorized' in error_str:
+            raise ClaudeUnavailableError(f"Claude API authentication failed: {str(e)}")
+        elif 'timeout' in error_str:
+            raise ClaudeUnavailableError("Claude request timed out")
+        elif 'connection' in error_str or 'network' in error_str:
+            raise ClaudeUnavailableError(f"Cannot connect to Claude API: {str(e)}")
+        else:
+            raise ClaudeError(f"Claude API error: {str(e)}")
 
 
 def extract_json_from_response(response: str) -> List[Dict[str, Any]]:
@@ -233,7 +226,7 @@ async def analyze_transactions_with_llm(
     transactions: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
     """
-    Use Ollama LLM to analyze transactions and identify recurring bills.
+    Use Claude LLM to analyze transactions and identify recurring bills.
 
     Args:
         transactions: List of dicts with 'date', 'description', 'amount'
@@ -257,7 +250,7 @@ async def analyze_transactions_with_llm(
     transactions_json = json.dumps(tx_summary, indent=2)
     prompt = ANALYSIS_PROMPT.format(transactions_json=transactions_json)
 
-    response = await call_ollama(prompt)
+    response = await call_claude(prompt)
     raw_results = extract_json_from_response(response)
 
     # Validate and normalize results
@@ -273,5 +266,5 @@ async def analyze_transactions_with_llm(
 async def extract_transactions_from_markdown(markdown: str) -> List[Dict[str, Any]]:
     """Extract transactions from markdown text using LLM"""
     prompt = MARKDOWN_EXTRACTION_PROMPT.format(markdown=markdown)
-    response = await call_ollama(prompt, use_json_format=True)
+    response = await call_claude(prompt)
     return extract_json_from_response(response)

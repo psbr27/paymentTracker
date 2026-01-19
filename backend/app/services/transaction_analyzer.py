@@ -10,10 +10,10 @@ from app.schemas.import_statement import (
     AnalyzedTransaction,
     DateRange
 )
-from app.services.ollama_service import (
+from app.services.claude_service import (
     analyze_transactions_with_llm,
-    OllamaUnavailableError,
-    OllamaError
+    ClaudeUnavailableError,
+    ClaudeError
 )
 
 
@@ -310,6 +310,6 @@ async def analyze_transactions(
 
         return analyzed, False
 
-    except (OllamaUnavailableError, OllamaError):
+    except (ClaudeUnavailableError, ClaudeError):
         # Fall back to rule-based analysis
         return analyze_with_rules(transactions, currency), True

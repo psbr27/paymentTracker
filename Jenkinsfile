@@ -153,7 +153,7 @@ pipeline {
 
         stage('Integration Test') {
             steps {
-                script {
+                withCredentials([string(credentialsId: 'anthropic-api-key', variable: 'ANTHROPIC_API_KEY')]) {
                     sh '''
                         # Pre-cleanup: Remove any orphaned containers from previous runs
                         # (container_name in compose file overrides project prefix)
@@ -161,7 +161,7 @@ pipeline {
                         docker rm -f paytrack-db paytrack-backend paytrack-frontend 2>/dev/null || true
                         docker compose -p paytrack-test down -v --remove-orphans 2>/dev/null || true
 
-                        cat > .env.test << 'EOF'
+                        cat > .env.test << EOF
 POSTGRES_USER=testuser
 POSTGRES_PASSWORD=testpassword
 POSTGRES_DB=paytrack_test
@@ -170,6 +170,7 @@ SECRET_KEY=test-secret-key-for-ci  # pragma: allowlist secret
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60
 DEBUG=false
+ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 EOF
 
                         docker compose --env-file .env.test -p paytrack-test up -d --build
@@ -215,7 +216,10 @@ EOF
                 expression { env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main' }
             }
             steps {
-                withCredentials([usernamePassword(credentialsId: env.SSH_CREDENTIALS_ID, usernameVariable: 'SSH_USER', passwordVariable: 'SSH_PASS')]) {
+                withCredentials([
+                    usernamePassword(credentialsId: env.SSH_CREDENTIALS_ID, usernameVariable: 'SSH_USER', passwordVariable: 'SSH_PASS'),
+                    string(credentialsId: 'anthropic-api-key', variable: 'ANTHROPIC_API_KEY')
+                ]) {
                     sh '''
                         echo "Deploying to ${DEPLOY_SERVER}..."
 
@@ -248,6 +252,9 @@ EOF
                             # Add registry and image tag to .env
                             grep -q 'REGISTRY_URL' .env || echo 'REGISTRY_URL=${REGISTRY_URL}' >> .env
                             sed -i 's|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|' .env || echo 'IMAGE_TAG=${IMAGE_TAG}' >> .env
+
+                            # Update Anthropic API key (securely injected from Jenkins)
+                            sed -i 's|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}|' .env
 
                             # Pull latest images and restart
                             docker compose pull

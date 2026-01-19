@@ -194,7 +194,7 @@ EOF
                 script {
                     withCredentials([usernamePassword(credentialsId: 'docker-registry-credentials',
                                                        usernameVariable: 'DOCKER_USER',
-                                                       passwordVariable: 'DOCKER_PASS')]) {  # pragma: allowlist secret
+                                                       passwordVariable: 'DOCKER_PASS')]) { // pragma: allowlist secret
                         sh '''
                             echo "$DOCKER_PASS" | docker login ${DOCKER_REGISTRY} -u "$DOCKER_USER" --password-stdin
 

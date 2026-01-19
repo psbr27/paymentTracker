@@ -2,8 +2,6 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_REGISTRY = credentials('docker-registry-url')
-        DOCKER_CREDENTIALS = credentials('docker-registry-credentials')
         IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_COMMIT?.take(7) ?: 'latest'}"
         COMPOSE_PROJECT_NAME = 'paytrack'
     }
@@ -98,7 +96,6 @@ pipeline {
             steps {
                 sh '''
                     echo "Running security checks..."
-                    # Check for secrets in codebase
                     docker run --rm -v $(pwd):/repo zricethezav/gitleaks:latest detect --source=/repo --no-git || true
                 '''
             }
@@ -141,9 +138,7 @@ pipeline {
         stage('Integration Test') {
             steps {
                 script {
-                    // Start services for integration testing
                     sh '''
-                        # Create test environment file
                         cat > .env.test << 'EOF'
 POSTGRES_USER=testuser
 POSTGRES_PASSWORD=testpassword
@@ -155,19 +150,15 @@ ACCESS_TOKEN_EXPIRE_MINUTES=60
 DEBUG=false
 EOF
 
-                        # Start services
                         docker compose --env-file .env.test -p paytrack-test up -d --build
 
-                        # Wait for services to be healthy
                         echo "Waiting for services to be ready..."
                         sleep 30
 
-                        # Check backend health
                         docker compose -p paytrack-test exec -T backend curl -f http://localhost:8000/health || \
                         docker compose -p paytrack-test exec -T backend curl -f http://localhost:8000/ || \
                         echo "Health check endpoint not available"
 
-                        # Show service status
                         docker compose -p paytrack-test ps
                     '''
                 }
@@ -184,27 +175,34 @@ EOF
 
         stage('Push Images') {
             when {
-                anyOf {
-                    branch 'main'
-                    branch 'master'
-                    branch 'develop'
+                allOf {
+                    anyOf {
+                        branch 'main'
+                        branch 'master'
+                        branch 'develop'
+                    }
+                    expression {
+                        return fileExists('/var/jenkins_home/credentials.xml') ||
+                               env.DOCKER_REGISTRY_URL != null
+                    }
                 }
             }
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: 'docker-registry-credentials',
-                                                       usernameVariable: 'DOCKER_USER',
-                                                       passwordVariable: 'DOCKER_PASS')]) { // pragma: allowlist secret
+                    withCredentials([
+                        string(credentialsId: 'docker-registry-url', variable: 'DOCKER_REGISTRY'),
+                        usernamePassword(credentialsId: 'docker-registry-credentials',
+                                         usernameVariable: 'DOCKER_USER',
+                                         passwordVariable: 'DOCKER_PASS')  // pragma: allowlist secret
+                    ]) {
                         sh '''
                             echo "$DOCKER_PASS" | docker login ${DOCKER_REGISTRY} -u "$DOCKER_USER" --password-stdin
 
-                            # Tag and push backend
                             docker tag paytrack-backend:${IMAGE_TAG} ${DOCKER_REGISTRY}/paytrack-backend:${IMAGE_TAG}
                             docker tag paytrack-backend:latest ${DOCKER_REGISTRY}/paytrack-backend:latest
                             docker push ${DOCKER_REGISTRY}/paytrack-backend:${IMAGE_TAG}
                             docker push ${DOCKER_REGISTRY}/paytrack-backend:latest
 
-                            # Tag and push frontend
                             docker tag paytrack-frontend:${IMAGE_TAG} ${DOCKER_REGISTRY}/paytrack-frontend:${IMAGE_TAG}
                             docker tag paytrack-frontend:latest ${DOCKER_REGISTRY}/paytrack-frontend:latest
                             docker push ${DOCKER_REGISTRY}/paytrack-frontend:${IMAGE_TAG}
@@ -225,7 +223,6 @@ EOF
                 script {
                     echo "Deploying to staging environment..."
                     // Add your staging deployment commands here
-                    // Example: SSH to staging server and run deploy.sh
                     // sshagent(['staging-server-credentials']) {
                     //     sh 'ssh user@staging-server "cd /app && ./deploy.sh -a"'
                     // }
@@ -242,33 +239,32 @@ EOF
                 script {
                     echo "Deploying to production environment..."
                     // Add your production deployment commands here
-                    // Example using the deploy.sh script:
                     // sshagent(['production-server-credentials']) {
                     //     sh 'ssh user@production-server "cd /app && ./deploy.sh -a"'
                     // }
                 }
             }
         }
+
+        stage('Cleanup') {
+            steps {
+                sh '''
+                    docker image prune -f || true
+                    docker container prune -f || true
+                '''
+            }
+        }
     }
 
     post {
         always {
-            // Clean up Docker resources
-            sh '''
-                docker image prune -f || true
-                docker container prune -f || true
-            '''
             cleanWs()
         }
         success {
             echo "Build successful! Image tag: ${IMAGE_TAG}"
-            // Uncomment to enable notifications
-            // slackSend(color: 'good', message: "Build successful: ${env.JOB_NAME} #${env.BUILD_NUMBER}")
         }
         failure {
             echo "Build failed!"
-            // Uncomment to enable notifications
-            // slackSend(color: 'danger', message: "Build failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}")
         }
     }
 }

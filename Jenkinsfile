@@ -208,25 +208,25 @@ EOF
                 expression { env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main' }
             }
             steps {
-                withCredentials([sshUserPrivateKey(credentialsId: env.SSH_CREDENTIALS_ID, keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')]) {
+                withCredentials([usernamePassword(credentialsId: env.SSH_CREDENTIALS_ID, usernameVariable: 'SSH_USER', passwordVariable: 'SSH_PASS')]) {
                     sh '''
                         echo "Deploying to ${DEPLOY_SERVER}..."
 
                         # Create deployment directory on remote server
-                        ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "mkdir -p ${DEPLOY_PATH}/database"
+                        sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "mkdir -p ${DEPLOY_PATH}/database"
 
                         # Copy only necessary files (no source code needed)
-                        scp -i $SSH_KEY -o StrictHostKeyChecking=no \
+                        sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=no \
                             docker-compose.prod.yml \
                             .env.example \
                             ${DEPLOY_USER}@${DEPLOY_SERVER}:${DEPLOY_PATH}/
 
-                        scp -i $SSH_KEY -o StrictHostKeyChecking=no \
+                        sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=no \
                             database/init.sql \
                             ${DEPLOY_USER}@${DEPLOY_SERVER}:${DEPLOY_PATH}/database/
 
                         # Deploy using registry images
-                        ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "
+                        sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "
                             cd ${DEPLOY_PATH}
 
                             # Rename docker-compose.prod.yml to docker-compose.yml

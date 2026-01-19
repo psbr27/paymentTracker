@@ -208,58 +208,56 @@ EOF
                 expression { env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main' }
             }
             steps {
-                script {
-                    sshagent(credentials: [env.SSH_CREDENTIALS_ID]) {
-                        sh '''
-                            echo "Deploying to ${DEPLOY_SERVER}..."
+                withCredentials([sshUserPrivateKey(credentialsId: env.SSH_CREDENTIALS_ID, keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')]) {
+                    sh '''
+                        echo "Deploying to ${DEPLOY_SERVER}..."
 
-                            # Create deployment directory on remote server
-                            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "mkdir -p ${DEPLOY_PATH}/database"
+                        # Create deployment directory on remote server
+                        ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "mkdir -p ${DEPLOY_PATH}/database"
 
-                            # Copy only necessary files (no source code needed)
-                            scp -o StrictHostKeyChecking=no \
-                                docker-compose.prod.yml \
-                                .env.example \
-                                ${DEPLOY_USER}@${DEPLOY_SERVER}:${DEPLOY_PATH}/
+                        # Copy only necessary files (no source code needed)
+                        scp -i $SSH_KEY -o StrictHostKeyChecking=no \
+                            docker-compose.prod.yml \
+                            .env.example \
+                            ${DEPLOY_USER}@${DEPLOY_SERVER}:${DEPLOY_PATH}/
 
-                            scp -o StrictHostKeyChecking=no \
-                                database/init.sql \
-                                ${DEPLOY_USER}@${DEPLOY_SERVER}:${DEPLOY_PATH}/database/
+                        scp -i $SSH_KEY -o StrictHostKeyChecking=no \
+                            database/init.sql \
+                            ${DEPLOY_USER}@${DEPLOY_SERVER}:${DEPLOY_PATH}/database/
 
-                            # Deploy using registry images
-                            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "
-                                cd ${DEPLOY_PATH}
+                        # Deploy using registry images
+                        ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "
+                            cd ${DEPLOY_PATH}
 
-                                # Rename docker-compose.prod.yml to docker-compose.yml
-                                mv -f docker-compose.prod.yml docker-compose.yml
+                            # Rename docker-compose.prod.yml to docker-compose.yml
+                            mv -f docker-compose.prod.yml docker-compose.yml
 
-                                # Create .env from example if not exists
-                                if [ ! -f .env ]; then
-                                    cp .env.example .env
-                                    echo 'Created .env from .env.example - please update with production values!'
-                                fi
+                            # Create .env from example if not exists
+                            if [ ! -f .env ]; then
+                                cp .env.example .env
+                                echo 'Created .env from .env.example - please update with production values!'
+                            fi
 
-                                # Add registry and image tag to .env
-                                grep -q 'REGISTRY_URL' .env || echo 'REGISTRY_URL=${REGISTRY_URL}' >> .env
-                                sed -i 's|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|' .env || echo 'IMAGE_TAG=${IMAGE_TAG}' >> .env
+                            # Add registry and image tag to .env
+                            grep -q 'REGISTRY_URL' .env || echo 'REGISTRY_URL=${REGISTRY_URL}' >> .env
+                            sed -i 's|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|' .env || echo 'IMAGE_TAG=${IMAGE_TAG}' >> .env
 
-                                # Pull latest images and restart
-                                docker compose pull
-                                docker compose down || true
-                                docker compose up -d
+                            # Pull latest images and restart
+                            docker compose pull
+                            docker compose down || true
+                            docker compose up -d
 
-                                # Show status
-                                echo '=== Deployment Status ==='
-                                docker compose ps
-                                echo ''
-                                echo '=== Container Logs (last 20 lines) ==='
-                                docker compose logs --tail=20
-                            "
+                            # Show status
+                            echo '=== Deployment Status ==='
+                            docker compose ps
+                            echo ''
+                            echo '=== Container Logs (last 20 lines) ==='
+                            docker compose logs --tail=20
+                        "
 
-                            echo "Deployment completed successfully!"
-                            echo "Application available at: http://${DEPLOY_SERVER}"
-                        '''
-                    }
+                        echo "Deployment completed successfully!"
+                        echo "Application available at: http://${DEPLOY_SERVER}"
+                    '''
                 }
             }
         }

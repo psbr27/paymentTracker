@@ -235,6 +235,22 @@ const ImportWizard = ({ isOpen, onClose, onComplete }) => {
               </p>
             </div>
 
+            {previewData?.ai_usage && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
+                <div className="flex items-center gap-2 mb-1">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <span className="font-medium">AI Analysis Complete</span>
+                </div>
+                <div className="text-xs text-blue-600">
+                  Model: {previewData.ai_usage.model} |
+                  Tokens: {previewData.ai_usage.input_tokens.toLocaleString()} in / {previewData.ai_usage.output_tokens.toLocaleString()} out |
+                  Est. cost: ${previewData.ai_usage.cost_estimate.toFixed(4)}
+                </div>
+              </div>
+            )}
+
             {warnings.length > 0 && (
               <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-sm">
                 {warnings.map((w, i) => (

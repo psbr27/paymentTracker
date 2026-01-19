@@ -34,6 +34,15 @@ class AnalyzedTransaction(BaseModel):
     date_range: DateRange
 
 
+class AIUsage(BaseModel):
+    """AI API usage statistics"""
+    model: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cost_estimate: float = Field(default=0.0, description="Estimated cost in USD")
+
+
 class ImportPreviewResponse(BaseModel):
     """Response from upload endpoint with analyzed transactions"""
     success: bool
@@ -41,6 +50,7 @@ class ImportPreviewResponse(BaseModel):
     analyzed_bills: List[AnalyzedTransaction]
     parsing_warnings: List[str] = []
     used_fallback: bool = Field(default=False, description="True if LLM was unavailable")
+    ai_usage: Optional[AIUsage] = Field(default=None, description="AI token usage if LLM was used")
 
 
 class TransactionToImport(BaseModel):

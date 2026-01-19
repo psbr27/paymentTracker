@@ -1,5 +1,6 @@
 import json
 import re
+from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 from decimal import Decimal
 
@@ -17,6 +18,34 @@ class ClaudeError(Exception):
 class ClaudeUnavailableError(ClaudeError):
     """Exception raised when Claude service is not reachable"""
     pass
+
+
+@dataclass
+class AIUsageStats:
+    """Statistics from AI API call"""
+    model: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cost_estimate: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "model": self.model,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "cost_estimate": round(self.cost_estimate, 6)
+        }
+
+
+# Pricing per 1M tokens (as of 2024)
+CLAUDE_PRICING = {
+    "claude-sonnet-4-20250514": {"input": 3.0, "output": 15.0},
+    "claude-3-5-sonnet-20241022": {"input": 3.0, "output": 15.0},
+    "claude-3-5-haiku-20241022": {"input": 0.80, "output": 4.0},
+    "default": {"input": 3.0, "output": 15.0}
+}
 
 
 ANALYSIS_PROMPT = """You are a financial transaction analyzer. Analyze these bank transactions and identify recurring bills and subscriptions.
@@ -86,8 +115,16 @@ BANK STATEMENT:
 Return JSON array only:"""
 
 
-async def call_claude(prompt: str, use_json_format: bool = False) -> str:
-    """Call Claude API via LangChain and return the response text"""
+def _calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    """Calculate estimated cost based on token usage"""
+    pricing = CLAUDE_PRICING.get(model, CLAUDE_PRICING["default"])
+    input_cost = (input_tokens / 1_000_000) * pricing["input"]
+    output_cost = (output_tokens / 1_000_000) * pricing["output"]
+    return input_cost + output_cost
+
+
+async def call_claude(prompt: str, use_json_format: bool = False) -> tuple[str, AIUsageStats]:
+    """Call Claude API via LangChain and return the response text and usage stats"""
     settings = get_settings()
 
     if not settings.anthropic_api_key:
@@ -105,7 +142,19 @@ async def call_claude(prompt: str, use_json_format: bool = False) -> str:
         messages = [HumanMessage(content=prompt)]
         response = await llm.ainvoke(messages)
 
-        return response.content
+        # Extract token usage from response metadata
+        usage = AIUsageStats(model=settings.claude_model)
+        if hasattr(response, 'response_metadata') and response.response_metadata:
+            metadata = response.response_metadata
+            if 'usage' in metadata:
+                usage.input_tokens = metadata['usage'].get('input_tokens', 0)
+                usage.output_tokens = metadata['usage'].get('output_tokens', 0)
+                usage.total_tokens = usage.input_tokens + usage.output_tokens
+                usage.cost_estimate = _calculate_cost(
+                    settings.claude_model, usage.input_tokens, usage.output_tokens
+                )
+
+        return response.content, usage
     except Exception as e:
         error_str = str(e).lower()
         if 'api key' in error_str or 'authentication' in error_str or 'unauthorized' in error_str:
@@ -224,7 +273,7 @@ def validate_analyzed_transaction(item: Dict[str, Any]) -> Optional[Dict[str, An
 
 async def analyze_transactions_with_llm(
     transactions: List[Dict[str, Any]]
-) -> List[Dict[str, Any]]:
+) -> tuple[List[Dict[str, Any]], Optional[AIUsageStats]]:
     """
     Use Claude LLM to analyze transactions and identify recurring bills.
 
@@ -232,10 +281,10 @@ async def analyze_transactions_with_llm(
         transactions: List of dicts with 'date', 'description', 'amount'
 
     Returns:
-        List of analyzed/categorized transactions
+        Tuple of (analyzed/categorized transactions, usage stats)
     """
     if not transactions:
-        return []
+        return [], None
 
     # Prepare transaction data for prompt
     # Group by description and include counts
@@ -250,7 +299,7 @@ async def analyze_transactions_with_llm(
     transactions_json = json.dumps(tx_summary, indent=2)
     prompt = ANALYSIS_PROMPT.format(transactions_json=transactions_json)
 
-    response = await call_claude(prompt)
+    response, usage = await call_claude(prompt)
     raw_results = extract_json_from_response(response)
 
     # Validate and normalize results
@@ -260,11 +309,11 @@ async def analyze_transactions_with_llm(
         if valid:
             validated.append(valid)
 
-    return validated
+    return validated, usage
 
 
-async def extract_transactions_from_markdown(markdown: str) -> List[Dict[str, Any]]:
+async def extract_transactions_from_markdown(markdown: str) -> tuple[List[Dict[str, Any]], Optional[AIUsageStats]]:
     """Extract transactions from markdown text using LLM"""
     prompt = MARKDOWN_EXTRACTION_PROMPT.format(markdown=markdown)
-    response = await call_claude(prompt)
-    return extract_json_from_response(response)
+    response, usage = await call_claude(prompt)
+    return extract_json_from_response(response), usage

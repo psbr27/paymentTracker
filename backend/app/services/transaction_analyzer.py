@@ -13,7 +13,8 @@ from app.schemas.import_statement import (
 from app.services.claude_service import (
     analyze_transactions_with_llm,
     ClaudeUnavailableError,
-    ClaudeError
+    ClaudeError,
+    AIUsageStats
 )
 
 
@@ -240,15 +241,15 @@ def analyze_with_rules(
 async def analyze_transactions(
     transactions: List[ParsedTransaction],
     currency: str = "USD"
-) -> Tuple[List[AnalyzedTransaction], bool]:
+) -> Tuple[List[AnalyzedTransaction], bool, Optional[AIUsageStats]]:
     """
     Analyze transactions using LLM with fallback to rules.
 
     Returns:
-        Tuple of (analyzed_transactions, used_fallback)
+        Tuple of (analyzed_transactions, used_fallback, ai_usage_stats)
     """
     if not transactions:
-        return [], False
+        return [], False, None
 
     # First, group transactions to get metadata
     groups = group_transactions(transactions)
@@ -264,11 +265,11 @@ async def analyze_transactions(
             for tx in transactions
         ]
 
-        llm_results = await analyze_transactions_with_llm(tx_dicts)
+        llm_results, usage = await analyze_transactions_with_llm(tx_dicts)
 
         if not llm_results:
             # LLM returned no results, use fallback
-            return analyze_with_rules(transactions, currency), True
+            return analyze_with_rules(transactions, currency), True, usage
 
         # Convert LLM results to AnalyzedTransaction objects
         analyzed = []
@@ -308,8 +309,8 @@ async def analyze_transactions(
                 date_range=date_range
             ))
 
-        return analyzed, False
+        return analyzed, False, usage
 
     except (ClaudeUnavailableError, ClaudeError):
         # Fall back to rule-based analysis
-        return analyze_with_rules(transactions, currency), True
+        return analyze_with_rules(transactions, currency), True, None

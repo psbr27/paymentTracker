@@ -11,7 +11,8 @@ from app.schemas.import_statement import (
     ImportConfirmRequest,
     ImportConfirmResponse,
     CreatedPayment,
-    ParsedTransaction
+    ParsedTransaction,
+    AIUsage
 )
 from app.services.csv_parser import parse_csv, CSVParseError
 from app.services.pdf_parser import parse_pdf, PDFParseError
@@ -94,7 +95,18 @@ async def upload_statement(
     currency = current_user.default_currency or "USD"
 
     # Analyze transactions with LLM (or fallback)
-    analyzed, used_fallback = await analyze_transactions(transactions, currency)
+    analyzed, used_fallback, usage_stats = await analyze_transactions(transactions, currency)
+
+    # Convert usage stats to schema if present
+    ai_usage = None
+    if usage_stats:
+        ai_usage = AIUsage(
+            model=usage_stats.model,
+            input_tokens=usage_stats.input_tokens,
+            output_tokens=usage_stats.output_tokens,
+            total_tokens=usage_stats.total_tokens,
+            cost_estimate=usage_stats.cost_estimate
+        )
 
     if not analyzed:
         return ImportPreviewResponse(
@@ -102,7 +114,8 @@ async def upload_statement(
             total_transactions=len(transactions),
             analyzed_bills=[],
             parsing_warnings=warnings + ["No recurring bills detected in this statement."],
-            used_fallback=used_fallback
+            used_fallback=used_fallback,
+            ai_usage=ai_usage
         )
 
     return ImportPreviewResponse(
@@ -110,7 +123,8 @@ async def upload_statement(
         total_transactions=len(transactions),
         analyzed_bills=analyzed,
         parsing_warnings=warnings,
-        used_fallback=used_fallback
+        used_fallback=used_fallback,
+        ai_usage=ai_usage
     )
 
 

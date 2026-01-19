@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
@@ -8,6 +9,8 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class ClaudeError(Exception):
@@ -270,7 +273,20 @@ async def call_claude(prompt: str, use_json_format: bool = False) -> tuple[str, 
                     settings.claude_model, usage.input_tokens, usage.output_tokens
                 )
 
-        return response.content, usage
+        # Handle response content - could be string or list of content blocks
+        content = response.content
+        if isinstance(content, list):
+            # Extract text from content blocks
+            text_parts = []
+            for block in content:
+                if isinstance(block, str):
+                    text_parts.append(block)
+                elif isinstance(block, dict) and 'text' in block:
+                    text_parts.append(block['text'])
+            content = ''.join(text_parts)
+
+        logger.debug(f"Claude response type: {type(response.content)}, content length: {len(content)}")
+        return content, usage
     except Exception as e:
         error_str = str(e).lower()
         if 'api key' in error_str or 'authentication' in error_str or 'unauthorized' in error_str:
@@ -438,25 +454,28 @@ async def extract_transactions_from_markdown(markdown: str) -> tuple[List[Dict[s
 def extract_json_object_from_response(response: str) -> Optional[Dict[str, Any]]:
     """Extract JSON object from LLM response, handling markdown code blocks"""
     # Remove markdown code blocks if present
-    response = re.sub(r'```json\s*', '', response)
-    response = re.sub(r'```\s*', '', response)
-    response = response.strip()
+    cleaned = re.sub(r'```json\s*', '', response)
+    cleaned = re.sub(r'```\s*', '', cleaned)
+    cleaned = cleaned.strip()
 
     # Try to find JSON object in response
-    start_idx = response.find('{')
-    end_idx = response.rfind('}')
+    start_idx = cleaned.find('{')
+    end_idx = cleaned.rfind('}')
 
     if start_idx == -1 or end_idx == -1:
+        logger.error(f"No JSON object found in response. Response preview: {response[:500]}")
         return None
 
-    json_str = response[start_idx:end_idx + 1]
+    json_str = cleaned[start_idx:end_idx + 1]
 
     try:
         result = json.loads(json_str)
         if isinstance(result, dict):
             return result
+        logger.error(f"Parsed JSON is not a dict: {type(result)}")
         return None
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON parse error: {e}. JSON preview: {json_str[:500]}")
         return None
 
 
@@ -483,6 +502,14 @@ async def analyze_statement_comprehensive(
     prompt = STATEMENT_ANALYSIS_PROMPT.format(statement_text=statement_text)
 
     response, usage = await call_claude(prompt)
+    logger.info(f"Claude response length: {len(response)} chars")
+    logger.debug(f"Claude response preview: {response[:1000]}")
+
     analysis = extract_json_object_from_response(response)
+
+    if analysis:
+        logger.info(f"Successfully parsed analysis with keys: {list(analysis.keys())}")
+    else:
+        logger.error("Failed to parse analysis from Claude response")
 
     return analysis, usage

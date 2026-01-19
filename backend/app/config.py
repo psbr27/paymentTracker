@@ -18,9 +18,9 @@ class Settings(BaseSettings):
     # Anthropic Claude API
     anthropic_api_key: str = ""  # Required
     claude_model: str = "claude-sonnet-4-20250514"
-    claude_max_tokens: int = 4096
+    claude_max_tokens: int = 16384  # Increased for comprehensive statement analysis
     claude_temperature: float = 0.1
-    claude_timeout: int = 120
+    claude_timeout: int = 180  # Increased for larger responses
 
     class Config:
         env_file = ".env"

@@ -155,6 +155,12 @@ pipeline {
             steps {
                 script {
                     sh '''
+                        # Pre-cleanup: Remove any orphaned containers from previous runs
+                        # (container_name in compose file overrides project prefix)
+                        echo "Cleaning up any orphaned containers..."
+                        docker rm -f paytrack-db paytrack-backend paytrack-frontend 2>/dev/null || true
+                        docker compose -p paytrack-test down -v --remove-orphans 2>/dev/null || true
+
                         cat > .env.test << 'EOF'
 POSTGRES_USER=testuser
 POSTGRES_PASSWORD=testpassword

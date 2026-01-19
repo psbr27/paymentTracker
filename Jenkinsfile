@@ -68,6 +68,7 @@ pipeline {
                         dir('frontend') {
                             sh '''
                                 docker build \
+                                    -f Dockerfile.prod \
                                     -t ${REGISTRY_URL}/paytrack-frontend:${IMAGE_TAG} \
                                     -t ${REGISTRY_URL}/paytrack-frontend:latest \
                                     .

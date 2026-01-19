@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// API URL - update this if your server IP changes
-const API_URL = 'http://157.245.13.169:8000';
+// API URL from environment variable, fallback to relative path for production
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 const api = axios.create({
   baseURL: API_URL,

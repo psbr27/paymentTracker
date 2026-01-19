@@ -36,8 +36,6 @@ services:
   frontend:
     image: ${REGISTRY_URL:-192.168.1.217:5000}/paytrack-frontend:${IMAGE_TAG:-latest}
     container_name: paytrack-frontend
-    environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
     ports:
       - "80:80"
     depends_on:

@@ -254,7 +254,15 @@ EOF
                             sed -i 's|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|' .env || echo 'IMAGE_TAG=${IMAGE_TAG}' >> .env
 
                             # Update Anthropic API key (securely injected from Jenkins)
-                            sed -i 's|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}|' .env
+                            # Add if not exists, update if exists
+                            if grep -q '^ANTHROPIC_API_KEY=' .env; then
+                                sed -i 's|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}|' .env
+                            else
+                                echo 'ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}' >> .env
+                            fi
+
+                            # Remove old Ollama settings (no longer used)
+                            sed -i '/^OLLAMA_/d' .env
 
                             # Pull latest images and restart
                             docker compose pull

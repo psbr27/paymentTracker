@@ -4,6 +4,10 @@ pipeline {
     environment {
         IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_COMMIT?.take(7) ?: 'latest'}"
         COMPOSE_PROJECT_NAME = 'paytrack'
+        DEPLOY_SERVER = '192.168.1.217'
+        DEPLOY_USER = 'server05'
+        DEPLOY_PATH = '/home/server05/paytrack'
+        SSH_CREDENTIALS_ID = 'c6b80171-bacf-4041-be0b-540aa126cf0c'
     }
 
     options {
@@ -173,75 +177,59 @@ EOF
             }
         }
 
-        stage('Push Images') {
-            when {
-                allOf {
-                    anyOf {
-                        branch 'main'
-                        branch 'master'
-                        branch 'develop'
-                    }
-                    expression {
-                        return fileExists('/var/jenkins_home/credentials.xml') ||
-                               env.DOCKER_REGISTRY_URL != null
-                    }
-                }
-            }
-            steps {
-                script {
-                    withCredentials([
-                        string(credentialsId: 'docker-registry-url', variable: 'DOCKER_REGISTRY'),
-                        usernamePassword(credentialsId: 'docker-registry-credentials',
-                                         usernameVariable: 'DOCKER_USER',
-                                         passwordVariable: 'DOCKER_PASS')  // pragma: allowlist secret
-                    ]) {
-                        sh '''
-                            echo "$DOCKER_PASS" | docker login ${DOCKER_REGISTRY} -u "$DOCKER_USER" --password-stdin
-
-                            docker tag paytrack-backend:${IMAGE_TAG} ${DOCKER_REGISTRY}/paytrack-backend:${IMAGE_TAG}
-                            docker tag paytrack-backend:latest ${DOCKER_REGISTRY}/paytrack-backend:latest
-                            docker push ${DOCKER_REGISTRY}/paytrack-backend:${IMAGE_TAG}
-                            docker push ${DOCKER_REGISTRY}/paytrack-backend:latest
-
-                            docker tag paytrack-frontend:${IMAGE_TAG} ${DOCKER_REGISTRY}/paytrack-frontend:${IMAGE_TAG}
-                            docker tag paytrack-frontend:latest ${DOCKER_REGISTRY}/paytrack-frontend:latest
-                            docker push ${DOCKER_REGISTRY}/paytrack-frontend:${IMAGE_TAG}
-                            docker push ${DOCKER_REGISTRY}/paytrack-frontend:latest
-
-                            docker logout ${DOCKER_REGISTRY}
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('Deploy to Staging') {
-            when {
-                branch 'develop'
-            }
-            steps {
-                script {
-                    echo "Deploying to staging environment..."
-                    // Add your staging deployment commands here
-                    // sshagent(['staging-server-credentials']) {
-                    //     sh 'ssh user@staging-server "cd /app && ./deploy.sh -a"'
-                    // }
-                }
-            }
-        }
-
-        stage('Deploy to Production') {
+        stage('Deploy to Server') {
             when {
                 branch 'main'
             }
             steps {
-                input message: 'Deploy to production?', ok: 'Deploy'
                 script {
-                    echo "Deploying to production environment..."
-                    // Add your production deployment commands here
-                    // sshagent(['production-server-credentials']) {
-                    //     sh 'ssh user@production-server "cd /app && ./deploy.sh -a"'
-                    // }
+                    sshagent(credentials: [env.SSH_CREDENTIALS_ID]) {
+                        sh '''
+                            echo "Deploying to ${DEPLOY_SERVER}..."
+
+                            # Create deployment directory on remote server
+                            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "mkdir -p ${DEPLOY_PATH}"
+
+                            # Copy project files to remote server
+                            scp -o StrictHostKeyChecking=no -r \
+                                docker-compose.yml \
+                                deploy.sh \
+                                backend \
+                                frontend \
+                                database \
+                                .env.example \
+                                ${DEPLOY_USER}@${DEPLOY_SERVER}:${DEPLOY_PATH}/
+
+                            # Create .env file if it doesn't exist, then deploy
+                            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "
+                                cd ${DEPLOY_PATH}
+
+                                # Create .env from example if not exists
+                                if [ ! -f .env ]; then
+                                    cp .env.example .env
+                                    echo 'Created .env from .env.example - please update with production values!'
+                                fi
+
+                                # Make deploy script executable
+                                chmod +x deploy.sh
+
+                                # Stop existing containers, rebuild and start
+                                docker compose down || true
+                                docker compose build --no-cache
+                                docker compose up -d
+
+                                # Show status
+                                echo '=== Deployment Status ==='
+                                docker compose ps
+                                echo ''
+                                echo '=== Container Logs (last 20 lines) ==='
+                                docker compose logs --tail=20
+                            "
+
+                            echo "Deployment completed successfully!"
+                            echo "Application available at: http://${DEPLOY_SERVER}"
+                        '''
+                    }
                 }
             }
         }
@@ -262,6 +250,7 @@ EOF
         }
         success {
             echo "Build successful! Image tag: ${IMAGE_TAG}"
+            echo "Deployed to: http://${DEPLOY_SERVER}"
         }
         failure {
             echo "Build failed!"

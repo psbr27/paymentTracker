@@ -115,6 +115,122 @@ BANK STATEMENT:
 Return JSON array only:"""
 
 
+STATEMENT_ANALYSIS_PROMPT = """Analyze this bank statement and return comprehensive JSON with this structure:
+
+{{
+  "metadata": {{
+    "statementPeriod": {{
+      "start": "YYYY-MM-DD",
+      "end": "YYYY-MM-DD"
+    }},
+    "accountHolder": "",
+    "accountNumber": "",
+    "bankName": "",
+    "generatedAt": "ISO timestamp"
+  }},
+  "summary": {{
+    "openingBalance": 0,
+    "closingBalance": 0,
+    "totalCredits": 0,
+    "totalDebits": 0,
+    "totalFees": 0,
+    "netChange": 0
+  }},
+  "credits": {{
+    "byCategory": [
+      {{
+        "category": "",
+        "total": 0,
+        "count": 0,
+        "transactions": [
+          {{
+            "id": "unique-id",
+            "date": "YYYY-MM-DD",
+            "description": "",
+            "amount": 0,
+            "memo": "",
+            "payee": "",
+            "method": "ACH|Zelle|Wire|Check|Cash"
+          }}
+        ]
+      }}
+    ]
+  }},
+  "debits": {{
+    "byCategory": [
+      {{
+        "category": "",
+        "total": 0,
+        "count": 0,
+        "transactions": [
+          {{
+            "id": "unique-id",
+            "date": "YYYY-MM-DD",
+            "description": "",
+            "amount": 0,
+            "memo": "",
+            "payee": "",
+            "method": "ACH|Card|ATM|Check|Zelle",
+            "isRecurring": true
+          }}
+        ]
+      }}
+    ]
+  }},
+  "analytics": {{
+    "topCategories": [
+      {{"category": "", "amount": 0, "percentage": 0}}
+    ],
+    "recurringPayments": [
+      {{"payee": "", "amount": 0, "frequency": "monthly|weekly", "category": ""}}
+    ],
+    "averageDailyBalance": 0,
+    "largestTransaction": {{
+      "type": "credit|debit",
+      "description": "",
+      "amount": 0,
+      "date": ""
+    }}
+  }},
+  "flags": {{
+    "overdraftEvents": [],
+    "unusualActivity": [],
+    "fees": []
+  }}
+}}
+
+**Instructions:**
+1. Return ONLY valid, parseable JSON
+2. No markdown code blocks or extra text
+3. Use consistent date format: YYYY-MM-DD
+4. Amounts as numbers (not strings)
+5. Identify recurring payments by matching payee names
+6. Flag any fees or unusual large transactions
+7. Generate unique IDs for each transaction (e.g., "txn-001", "txn-002")
+
+**Categories to use:**
+- Income_Payroll
+- Mortgage_Rent
+- Credit_Cards
+- Utilities
+- Insurance
+- Investments
+- Subscriptions
+- Shopping
+- Travel_Entertainment
+- Loans
+- Transfers_In
+- Transfers_Out
+- Cash_Withdrawal
+- Fees
+- Other
+
+BANK STATEMENT TEXT:
+{statement_text}
+
+JSON OUTPUT:"""
+
+
 def _calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """Calculate estimated cost based on token usage"""
     pricing = CLAUDE_PRICING.get(model, CLAUDE_PRICING["default"])
@@ -317,3 +433,56 @@ async def extract_transactions_from_markdown(markdown: str) -> tuple[List[Dict[s
     prompt = MARKDOWN_EXTRACTION_PROMPT.format(markdown=markdown)
     response, usage = await call_claude(prompt)
     return extract_json_from_response(response), usage
+
+
+def extract_json_object_from_response(response: str) -> Optional[Dict[str, Any]]:
+    """Extract JSON object from LLM response, handling markdown code blocks"""
+    # Remove markdown code blocks if present
+    response = re.sub(r'```json\s*', '', response)
+    response = re.sub(r'```\s*', '', response)
+    response = response.strip()
+
+    # Try to find JSON object in response
+    start_idx = response.find('{')
+    end_idx = response.rfind('}')
+
+    if start_idx == -1 or end_idx == -1:
+        return None
+
+    json_str = response[start_idx:end_idx + 1]
+
+    try:
+        result = json.loads(json_str)
+        if isinstance(result, dict):
+            return result
+        return None
+    except json.JSONDecodeError:
+        return None
+
+
+async def analyze_statement_comprehensive(
+    statement_text: str
+) -> tuple[Optional[Dict[str, Any]], Optional[AIUsageStats]]:
+    """
+    Perform comprehensive analysis of a bank statement.
+
+    Args:
+        statement_text: Raw text extracted from bank statement PDF/CSV
+
+    Returns:
+        Tuple of (analysis_result, usage_stats)
+    """
+    if not statement_text or len(statement_text.strip()) < 100:
+        return None, None
+
+    # Truncate very long text to avoid token limits
+    max_chars = 30000
+    if len(statement_text) > max_chars:
+        statement_text = statement_text[:max_chars]
+
+    prompt = STATEMENT_ANALYSIS_PROMPT.format(statement_text=statement_text)
+
+    response, usage = await call_claude(prompt)
+    analysis = extract_json_object_from_response(response)
+
+    return analysis, usage

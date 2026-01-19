@@ -17,3 +17,4 @@ class User(Base):
 
     # Relationships
     payments = relationship("Payment", back_populates="user", cascade="all, delete-orphan")
+    statements = relationship("Statement", back_populates="user", cascade="all, delete-orphan")

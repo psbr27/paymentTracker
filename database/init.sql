@@ -35,6 +35,23 @@ CREATE TABLE payments (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Statements table (analyzed bank statements)
+CREATE TABLE statements (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    bank_name VARCHAR(100) NOT NULL,
+    account_number_masked VARCHAR(20),
+    period_start DATE NOT NULL,
+    period_end DATE NOT NULL,
+    original_filename VARCHAR(255),
+    analysis JSONB NOT NULL,
+    ai_model VARCHAR(100),
+    ai_tokens_used INTEGER,
+    ai_cost_estimate VARCHAR(20),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Exchange rates table
 CREATE TABLE exchange_rates (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -50,6 +67,9 @@ CREATE INDEX idx_payments_user_id ON payments(user_id);
 CREATE INDEX idx_payments_start_date ON payments(start_date);
 CREATE INDEX idx_payments_end_date ON payments(end_date);
 CREATE INDEX idx_payments_category ON payments(category);
+CREATE INDEX idx_statements_user_id ON statements(user_id);
+CREATE INDEX idx_statements_period ON statements(period_start, period_end);
+CREATE INDEX idx_statements_bank ON statements(bank_name);
 
 -- Insert default exchange rates
 INSERT INTO exchange_rates (from_currency, to_currency, rate) VALUES
@@ -73,5 +93,11 @@ $$ language 'plpgsql';
 -- Trigger to auto-update updated_at on payments table
 CREATE TRIGGER update_payments_updated_at
     BEFORE UPDATE ON payments
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger to auto-update updated_at on statements table
+CREATE TRIGGER update_statements_updated_at
+    BEFORE UPDATE ON statements
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();

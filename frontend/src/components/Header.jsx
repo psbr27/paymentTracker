@@ -33,6 +33,13 @@ const Header = ({ onYearClick, currentYear }) => {
               Year
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/statements')}
+          >
+            Statements
+          </Button>
         </div>
 
         <div className="flex items-center gap-4">

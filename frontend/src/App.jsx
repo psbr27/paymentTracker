@@ -5,6 +5,8 @@ import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 import CalendarPage from './pages/CalendarPage';
 import YearOverviewPage from './pages/YearOverviewPage';
+import StatementsPage from './pages/StatementsPage';
+import StatementDetailPage from './pages/StatementDetailPage';
 
 function App() {
   return (
@@ -26,6 +28,22 @@ function App() {
               element={
                 <ProtectedRoute>
                   <YearOverviewPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/statements"
+              element={
+                <ProtectedRoute>
+                  <StatementsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/statements/:id"
+              element={
+                <ProtectedRoute>
+                  <StatementDetailPage />
                 </ProtectedRoute>
               }
             />

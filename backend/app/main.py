@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
-from app.routes import auth, payments, calendar, summary, settings, export, import_statement
+from app.routes import auth, payments, calendar, summary, settings, export, import_statement, statements
 
 settings_config = get_settings()
 
@@ -28,6 +28,7 @@ app.include_router(summary.router, prefix="/api/summary", tags=["Summary"])
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
 app.include_router(export.router, prefix="/api/export", tags=["Export"])
 app.include_router(import_statement.router, prefix="/api/import", tags=["Import"])
+app.include_router(statements.router, prefix="/api/statements", tags=["Statements"])
 
 
 @app.get("/")

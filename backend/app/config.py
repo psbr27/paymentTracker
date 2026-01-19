@@ -15,9 +15,6 @@ class Settings(BaseSettings):
     app_name: str = "PayTrack"
     debug: bool = True
 
-    # PDF Processing
-    pdf_parser_engine: str = "docling"  # "docling", "pdfplumber", "auto"
-
     # Ollama LLM - Primary (Remote)
     ollama_base_url: str = "http://192.168.1.9:11434"
     ollama_model: str = "qwen3:30b"

@@ -3,7 +3,6 @@ from typing import List, Tuple
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.database import get_db
 from app.models.user import User
 from app.models.payment import Payment
@@ -15,8 +14,7 @@ from app.schemas.import_statement import (
     ParsedTransaction
 )
 from app.services.csv_parser import parse_csv, CSVParseError
-from app.services.pdf_parser import convert_pdf_to_markdown, parse_pdf, PDFParseError
-from app.services.ollama_service import extract_transactions_from_markdown
+from app.services.pdf_parser import parse_pdf, PDFParseError
 from app.services.transaction_analyzer import analyze_transactions
 from app.utils.auth import get_current_user
 
@@ -26,41 +24,7 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 
 async def process_pdf_file(content: bytes) -> Tuple[List[ParsedTransaction], List[str]]:
-    """Process PDF using docling (if configured) or pdfplumber fallback"""
-    from datetime import date as date_type
-    from decimal import Decimal
-
-    settings = get_settings()
-    warnings = []
-
-    if settings.pdf_parser_engine in ("docling", "auto"):
-        try:
-            markdown = convert_pdf_to_markdown(content)
-            raw_transactions = await extract_transactions_from_markdown(markdown)
-            transactions = []
-            for tx in raw_transactions:
-                # Parse date from string if needed
-                tx_date = tx.get('date')
-                if isinstance(tx_date, str):
-                    tx_date = date_type.fromisoformat(tx_date)
-
-                # Convert amount to Decimal
-                amount = Decimal(str(tx.get('amount', 0)))
-
-                description = tx.get('description', '')
-                transactions.append(ParsedTransaction(
-                    date=tx_date,
-                    description=description,
-                    amount=abs(amount),
-                    original_description=description
-                ))
-            return transactions, warnings
-        except Exception as e:
-            warnings.append(f"Docling failed: {e}")
-            if settings.pdf_parser_engine != "auto":
-                raise
-
-    # Fallback to pdfplumber
+    """Process PDF using pdfplumber with LLM fallback for extraction"""
     return await parse_pdf(content)
 
 

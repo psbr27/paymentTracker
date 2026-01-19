@@ -271,7 +271,7 @@ async def analyze_transactions_with_llm(
 
 
 async def extract_transactions_from_markdown(markdown: str) -> List[Dict[str, Any]]:
-    """Extract transactions from docling markdown using LLM"""
+    """Extract transactions from markdown text using LLM"""
     prompt = MARKDOWN_EXTRACTION_PROMPT.format(markdown=markdown)
     response = await call_ollama(prompt, use_json_format=True)
     return extract_json_from_response(response)

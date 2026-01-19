@@ -18,24 +18,6 @@ class PDFParseError(Exception):
     pass
 
 
-def convert_pdf_to_markdown(content: bytes) -> str:
-    """Convert PDF bytes to markdown using docling"""
-    from docling.document_converter import DocumentConverter
-
-    converter = DocumentConverter()
-
-    # Write to temp file (docling needs file path)
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
-        f.write(content)
-        temp_path = f.name
-
-    try:
-        result = converter.convert(temp_path)
-        return result.document.export_to_markdown()
-    finally:
-        os.unlink(temp_path)
-
-
 # Common date formats to try
 DATE_FORMATS = [
     '%m/%d/%y',      # 10/15/25 (Bank of America format)

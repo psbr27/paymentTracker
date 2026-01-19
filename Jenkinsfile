@@ -190,7 +190,7 @@ EOF
 
         stage('Push Images') {
             when {
-                branch 'main'
+                expression { env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main' }
             }
             steps {
                 sh '''
@@ -205,7 +205,7 @@ EOF
 
         stage('Deploy to Server') {
             when {
-                branch 'main'
+                expression { env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main' }
             }
             steps {
                 script {

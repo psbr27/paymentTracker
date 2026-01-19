@@ -4,6 +4,7 @@ pipeline {
     environment {
         IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_COMMIT?.take(7) ?: 'latest'}"
         COMPOSE_PROJECT_NAME = 'paytrack'
+        REGISTRY_URL = '192.168.1.217:5000'
         DEPLOY_SERVER = '192.168.1.217'
         DEPLOY_USER = 'server05'
         DEPLOY_PATH = '/home/server05/paytrack'
@@ -53,14 +54,24 @@ pipeline {
                 stage('Build Backend') {
                     steps {
                         dir('backend') {
-                            sh 'docker build -t paytrack-backend:${IMAGE_TAG} -t paytrack-backend:latest .'
+                            sh '''
+                                docker build \
+                                    -t ${REGISTRY_URL}/paytrack-backend:${IMAGE_TAG} \
+                                    -t ${REGISTRY_URL}/paytrack-backend:latest \
+                                    .
+                            '''
                         }
                     }
                 }
                 stage('Build Frontend') {
                     steps {
                         dir('frontend') {
-                            sh 'docker build -t paytrack-frontend:${IMAGE_TAG} -t paytrack-frontend:latest .'
+                            sh '''
+                                docker build \
+                                    -t ${REGISTRY_URL}/paytrack-frontend:${IMAGE_TAG} \
+                                    -t ${REGISTRY_URL}/paytrack-frontend:latest \
+                                    .
+                            '''
                         }
                     }
                 }
@@ -111,7 +122,7 @@ pipeline {
                     steps {
                         dir('backend') {
                             sh '''
-                                docker run --rm -v $(pwd):/app -w /app paytrack-backend:${IMAGE_TAG} sh -c "
+                                docker run --rm -v $(pwd):/app -w /app ${REGISTRY_URL}/paytrack-backend:${IMAGE_TAG} sh -c "
                                     pip install --quiet pytest pytest-cov httpx
                                     pytest tests/ -v --cov=app --cov-report=xml || echo 'No tests found or tests failed'
                                 " || true
@@ -177,6 +188,21 @@ EOF
             }
         }
 
+        stage('Push Images') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sh '''
+                    echo "Pushing images to registry ${REGISTRY_URL}..."
+                    docker push ${REGISTRY_URL}/paytrack-backend:${IMAGE_TAG}
+                    docker push ${REGISTRY_URL}/paytrack-backend:latest
+                    docker push ${REGISTRY_URL}/paytrack-frontend:${IMAGE_TAG}
+                    docker push ${REGISTRY_URL}/paytrack-frontend:latest
+                '''
+            }
+        }
+
         stage('Deploy to Server') {
             when {
                 branch 'main'
@@ -188,21 +214,24 @@ EOF
                             echo "Deploying to ${DEPLOY_SERVER}..."
 
                             # Create deployment directory on remote server
-                            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "mkdir -p ${DEPLOY_PATH}"
+                            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "mkdir -p ${DEPLOY_PATH}/database"
 
-                            # Copy project files to remote server
-                            scp -o StrictHostKeyChecking=no -r \
-                                docker-compose.yml \
-                                deploy.sh \
-                                backend \
-                                frontend \
-                                database \
+                            # Copy only necessary files (no source code needed)
+                            scp -o StrictHostKeyChecking=no \
+                                docker-compose.prod.yml \
                                 .env.example \
                                 ${DEPLOY_USER}@${DEPLOY_SERVER}:${DEPLOY_PATH}/
 
-                            # Create .env file if it doesn't exist, then deploy
+                            scp -o StrictHostKeyChecking=no \
+                                database/init.sql \
+                                ${DEPLOY_USER}@${DEPLOY_SERVER}:${DEPLOY_PATH}/database/
+
+                            # Deploy using registry images
                             ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "
                                 cd ${DEPLOY_PATH}
+
+                                # Rename docker-compose.prod.yml to docker-compose.yml
+                                mv -f docker-compose.prod.yml docker-compose.yml
 
                                 # Create .env from example if not exists
                                 if [ ! -f .env ]; then
@@ -210,12 +239,13 @@ EOF
                                     echo 'Created .env from .env.example - please update with production values!'
                                 fi
 
-                                # Make deploy script executable
-                                chmod +x deploy.sh
+                                # Add registry and image tag to .env
+                                grep -q 'REGISTRY_URL' .env || echo 'REGISTRY_URL=${REGISTRY_URL}' >> .env
+                                sed -i 's|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|' .env || echo 'IMAGE_TAG=${IMAGE_TAG}' >> .env
 
-                                # Stop existing containers, rebuild and start
+                                # Pull latest images and restart
+                                docker compose pull
                                 docker compose down || true
-                                docker compose build --no-cache
                                 docker compose up -d
 
                                 # Show status

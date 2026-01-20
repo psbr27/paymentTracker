@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
+import AddToRecurringPanel from '../components/AddToRecurringPanel';
 import { getStatement } from '../services/statements';
 
 const StatementDetailPage = () => {
@@ -12,6 +13,18 @@ const StatementDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('summary');
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
+  const [isRecurringPanelOpen, setIsRecurringPanelOpen] = useState(false);
+
+  const handleAddToRecurring = (transaction, category) => {
+    setSelectedTransaction({ ...transaction, category });
+    setIsRecurringPanelOpen(true);
+  };
+
+  const handleRecurringPanelClose = () => {
+    setIsRecurringPanelOpen(false);
+    setSelectedTransaction(null);
+  };
 
   useEffect(() => {
     loadStatement();
@@ -208,12 +221,23 @@ const StatementDetailPage = () => {
                   </div>
                   <div className="divide-y">
                     {category.transactions?.map((tx, txIdx) => (
-                      <div key={txIdx} className="px-4 py-3 flex justify-between items-center hover:bg-gray-50">
-                        <div>
+                      <div key={txIdx} className="px-4 py-3 flex justify-between items-center hover:bg-gray-50 group">
+                        <div className="flex-1">
                           <p className="font-medium">{tx.description}</p>
                           <p className="text-sm text-gray-500">{formatDate(tx.date)} {tx.method && `- ${tx.method}`}</p>
                         </div>
-                        <span className="text-green-600 font-medium">{formatCurrency(tx.amount)}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-green-600 font-medium">{formatCurrency(tx.amount)}</span>
+                          <button
+                            onClick={() => handleAddToRecurring(tx, category.category)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                            title="Add to Recurring Payments"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -241,8 +265,8 @@ const StatementDetailPage = () => {
                   </div>
                   <div className="divide-y">
                     {category.transactions?.map((tx, txIdx) => (
-                      <div key={txIdx} className="px-4 py-3 flex justify-between items-center hover:bg-gray-50">
-                        <div>
+                      <div key={txIdx} className="px-4 py-3 flex justify-between items-center hover:bg-gray-50 group">
+                        <div className="flex-1">
                           <p className="font-medium">
                             {tx.description}
                             {tx.isRecurring && (
@@ -251,7 +275,18 @@ const StatementDetailPage = () => {
                           </p>
                           <p className="text-sm text-gray-500">{formatDate(tx.date)} {tx.method && `- ${tx.method}`}</p>
                         </div>
-                        <span className="text-red-600 font-medium">{formatCurrency(tx.amount)}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-red-600 font-medium">{formatCurrency(tx.amount)}</span>
+                          <button
+                            onClick={() => handleAddToRecurring(tx, category.category)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                            title="Add to Recurring Payments"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -335,6 +370,16 @@ const StatementDetailPage = () => {
           </div>
         )}
       </main>
+
+      {/* Add to Recurring Panel */}
+      <AddToRecurringPanel
+        isOpen={isRecurringPanelOpen}
+        onClose={handleRecurringPanelClose}
+        transaction={selectedTransaction}
+        onSuccess={() => {
+          // Optionally refresh or show a toast notification
+        }}
+      />
     </div>
   );
 };

@@ -224,7 +224,7 @@ EOF
                         echo "Deploying to ${DEPLOY_SERVER}..."
 
                         # Create deployment directory on remote server
-                        sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "mkdir -p ${DEPLOY_PATH}/database"
+                        sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "mkdir -p ${DEPLOY_PATH}/database/migrations"
 
                         # Copy only necessary files (no source code needed)
                         sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=no \
@@ -235,6 +235,11 @@ EOF
                         sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=no \
                             database/init.sql \
                             ${DEPLOY_USER}@${DEPLOY_SERVER}:${DEPLOY_PATH}/database/
+
+                        # Copy migration scripts
+                        sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=no \
+                            database/migrations/*.sql \
+                            ${DEPLOY_USER}@${DEPLOY_SERVER}:${DEPLOY_PATH}/database/migrations/ 2>/dev/null || echo "No migrations to copy"
 
                         # Deploy using registry images
                         sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "
@@ -268,6 +273,19 @@ EOF
                             docker compose pull
                             docker compose down || true
                             docker compose up -d
+
+                            # Wait for database to be ready
+                            echo '=== Waiting for database to be ready ==='
+                            sleep 10
+
+                            # Run database migrations
+                            echo '=== Running database migrations ==='
+                            for migration in database/migrations/*.sql; do
+                                if [ -f \"\$migration\" ]; then
+                                    echo \"Running migration: \$migration\"
+                                    cat \"\$migration\" | docker compose exec -T db psql -U postgres -d paytrack 2>&1 || true
+                                fi
+                            done
 
                             # Show status
                             echo '=== Deployment Status ==='
